@@ -383,6 +383,196 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
         df["ground_fatalities"] = pd.to_numeric(
             df["ground_fatalities"], errors="coerce"
         )
+    # Aaircraft category from 'aircraft_type'
+    if "aircraft_type" in df.columns:
+        atype = df["aircraft_type"].astype(str)
+
+        def categorize_aircraft(s: str) -> str:
+            if pd.isna(s) or s.strip() == "" or s.strip() == "?":
+                return "Unknown"
+            s = s.lower()
+
+            # 1) Helicopters / rotorcraft
+            if any(k in s for k in [
+                "helicopter", " heli ", "bell ", "uh-", "ch-", "mh-", "ah-",
+                "s-61", "s-76", "mi-8", "mi-17", "mi-24"
+            ]):
+                return "Helicopter"
+
+            # 2) Gliders / sailplanes
+            if "glider" in s or "sailplane" in s:
+                return "Glider"
+
+            # 3) Amphibian / seaplane / flying boat
+            if any(k in s for k in [
+                "amphibian", "seaplane", "floatplane", "flying boat",
+                "catalina", "pby", "goose", "otter", "beaver", "sunderland"
+            ]):
+                return "Amphibian/Seaplane"
+
+            # 4) Military fixed-wing (transports, bombers, fighters)
+            if any(k in s for k in [
+                # generic military prefixes
+                " c-1", " c-2", " c-3", " c-4", "kc-", "ec-", "rc-",
+                " f-", " b-17", " b-24", " b-29", " b-52",
+                # Soviet / Russian
+                "mig", "mig-", "su-", "tu-", "an-12", "an-22", "il-76",
+            ]):
+                return "Military"
+
+            # 5) Large commercial / regional jets
+            if any(k in s for k in [
+                "boeing", "airbus", "embraer", "erj", "e-jet",
+                "bombardier", "crj", "md-", "dc-9", "dc-10", "l-1011",
+                "fokker 70", "fokker 100", "yak-40", "yak-42", "tu-134", "tu-154"
+            ]):
+                return "Jet"
+
+            # 6) Turboprops (commuter / regional / utility)
+            if any(k in s for k in [
+                "turboprop", " turbo prop", "dhc-", "dash 8", "atr-",
+                "saab 340", "saab 2000", "fokker 27", "fokker 50", "hs-748",
+                "l-188", "herald", "shorts 3", "shorts-3", "metro ii", "metro iii",
+                "an-24", "an-26", "an-32", "an-72", "casa 212", "jetstream 31", "jetstream 32"
+            ]):
+                return "Turboprop"
+
+            # 7) Small / piston props (GA, classic propliners)
+            if any(k in s for k in [
+                "cessna", "piper", "beech", "king air", "baron",
+                "bonanza", "mooney", "seneca", "aztec", "navajo",
+                "dc-3", "dakota", "convair", "cv-", "dc-4", "dc-6", "dc-7",
+                "an-2", "il-14", "lockheed 10", "lockheed 12", "lockheed 18",
+                "do-", "dornier", "y-7"
+            ]):
+                return "Piston/Prop"
+
+            # 8) Vintage / early aviation types
+            if any(k in s for k in [
+                "trimotor", "tri-motor", "waco", "curtiss", "junker", "junkers",
+                "tiger moth", "biplane", "stearman"
+            ]):
+                return "Vintage/Early"
+
+            # 9) Fallback
+            return "Other/Unmapped"
+
+        df["aircraft_category"] = atype.apply(categorize_aircraft)
+    else:
+        df["aircraft_category"] = pd.NA
+
+    # Phase of flight from 'summary'
+    if "summary" in df.columns:
+        summ = df["summary"].astype(str).str.lower()
+
+        def extract_phase(s: str) -> str:
+            if any(x in s for x in ["taxi", "ground", "parked"]):
+                return "Ground/Taxi"
+            if any(x in s for x in ["takeoff", "shortly after takeoff", "rotation"]):
+                return "Takeoff"
+            if "initial climb" in s:
+                return "Initial climb"
+            if " climb" in s:
+                return "Climb"
+            if any(x in s for x in ["cruise", "en route", "enroute"]):
+                return "Cruise"
+            if "descent" in s:
+                return "Descent"
+            if any(x in s for x in ["approach", "final approach", "ils"]):
+                return "Approach"
+            if any(x in s for x in ["landing", "touchdown", "flare"]):
+                return "Landing"
+            if any(x in s for x in ["go-around", "missed approach"]):
+                return "Go-around"
+            return "Unknown"
+
+        df["phase_clean"] = summ.apply(extract_phase)
+    else:
+        df["phase_clean"] = pd.NA
+        
+
+        # Weather conditions inferred from 'summary'
+    if "summary" in df.columns:
+        summ = df["summary"].astype(str).str.lower()
+
+        def extract_weather(s: str) -> str:
+            # quick sanity
+            if not s or s.strip() == "" or s.strip() == "?":
+                return "None/Not mentioned"
+
+            # STORM / THUNDERSTORM / MICROBURST
+            if any(x in s for x in [
+                "thunderstorm", "thunder storm", "t-storm", "tstorm",
+                "storm", "squall", "microburst", "downburst", "heavy storm"
+            ]):
+                return "Storm/Thunderstorm"
+
+            # FOG / LOW VISIBILITY
+            if any(x in s for x in [
+                "fog", "mist", "low visibility", "reduced visibility",
+                "poor visibility", "haze", "smog", "whiteout"
+            ]):
+                return "Fog/Low visibility"
+
+            # SNOW / ICE / WINTER PRECIP
+            if any(x in s for x in [
+                "snow", "blizzard", "sleet", "snowstorm", "snow storm",
+                "icy runway", "ice on runway", "runway ice"
+            ]):
+                return "Snow/Icy surface"
+
+            # ICING (in flight)
+            if any(x in s for x in [
+                "icing", "ice accretion", "wing ice", "airframe ice",
+                "freezing rain", "freezing drizzle"
+            ]):
+                return "Icing (in-flight)"
+
+            # RAIN
+            if any(x in s for x in [
+                "rain", "heavy rain", "rainstorm", "rain storm", "showers", "downpour"
+            ]):
+                return "Rain"
+
+            # WIND / WIND SHEAR / GUST
+            if any(x in s for x in [
+                "wind shear", "windshear", "crosswind", "cross wind", "gust",
+                "strong winds", "gusty", "tailwind", "headwind"
+            ]):
+                return "Wind/Wind shear"
+
+            # TURBULENCE
+            if "turbulence" in s:
+                return "Turbulence"
+
+            # If they explicitly say "good/clear" weather
+            if any(x in s for x in ["clear weather", "good weather", "vfr conditions", "clear skies"]):
+                return "Good/Visual conditions"
+
+            # No obvious weather signal
+            return "None/Not mentioned"
+
+        df["weather_condition"] = summ.apply(extract_weather)
+
+        # Simple binary flag: was any adverse weather mentioned?
+        def has_adverse(w: str) -> bool:
+            if w in (
+                "Storm/Thunderstorm",
+                "Fog/Low visibility",
+                "Snow/Icy surface",
+                "Icing (in-flight)",
+                "Rain",
+                "Wind/Wind shear",
+                "Turbulence",
+            ):
+                return True
+            return False
+
+        df["weather_adverse"] = df["weather_condition"].apply(has_adverse)
+    else:
+        df["weather_condition"] = pd.NA
+        df["weather_adverse"] = pd.NA
+
 
     return df
 
