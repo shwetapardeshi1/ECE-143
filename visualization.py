@@ -326,6 +326,246 @@ def plot_fatalities_by_group_decade(df, outdir):
     plt.close()
     print(f"Saved {fname}")
 
+def plot_hourly_severity(df, outdir):
+    """Existing: accidents & mean fatality ratio by hour."""
+    if "hour" not in df.columns or "fatality_ratio" not in df.columns:
+        print("Skipping hourly severity plot (missing 'hour' or 'fatality_ratio').")
+        return
+
+    subset = df[
+        df["hour"].notna()
+        & df["fatality_ratio"].notna()
+        & (df["fatality_ratio"] >= 0)
+        & (df["fatality_ratio"] <= 1)
+    ].copy()
+    if subset.empty:
+        print("Skipping hourly severity plot (no valid rows).")
+        return
+
+    agg = (
+        subset.groupby("hour")
+        .agg(
+            crashes=("hour", "size"),
+            mean_fatality_ratio=("fatality_ratio", "mean"),
+        )
+        .reset_index()
+        .sort_values("hour")
+    )
+
+    fig, ax1 = plt.subplots(figsize=(9, 4))
+    sns.barplot(data=agg, x="hour", y="crashes", ax=ax1)
+    ax1.set_xlabel("Hour of day")
+    ax1.set_ylabel("Number of accidents")
+
+    ax2 = ax1.twinx()
+    ax2.plot(
+        agg["hour"],
+        agg["mean_fatality_ratio"],
+        marker="o",
+        linestyle="--",
+        color="tab:red",
+        label="Mean fatality ratio",
+    )
+    ax2.set_ylabel("Mean fatality ratio")
+    ax2.legend(loc="upper right")
+
+    plt.title("Accidents and fatality severity by hour of day")
+    plt.tight_layout()
+    fname = os.path.join(outdir, "hourly_severity.png")
+    plt.savefig(fname, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"Saved {fname}")
+
+
+def plot_hourly_severity_stacked(df, outdir):
+    """Stacked bar chart of non-fatal / partial-fatal / total-loss crashes by hour."""
+    if "hour" not in df.columns or "fatality_ratio" not in df.columns:
+        print("Skipping hourly severity stacked plot (missing 'hour' or 'fatality_ratio').")
+        return
+
+    subset = df[
+        df["hour"].notna()
+        & df["fatality_ratio"].notna()
+        & (df["fatality_ratio"] >= 0)
+        & (df["fatality_ratio"] <= 1)
+    ].copy()
+    if subset.empty:
+        print("Skipping hourly severity stacked plot (no valid rows).")
+        return
+
+    subset["severity_cat"] = pd.cut(
+        subset["fatality_ratio"],
+        bins=[-0.01, 0, 0.99, 1.01],
+        labels=["Non-fatal", "Partial fatal", "Total-loss"],
+    )
+
+    hour_sev = (
+        subset.groupby(["hour", "severity_cat"])
+        .size()
+        .unstack(fill_value=0)
+        .sort_index()
+    )
+
+    plt.figure(figsize=(12, 6))
+    hour_sev.plot(kind="bar", stacked=True, ax=plt.gca())
+    plt.xlabel("Hour of day")
+    plt.ylabel("Number of crashes")
+    plt.title("Crash severity distribution by hour of day")
+    plt.tight_layout()
+    fname = os.path.join(outdir, "hourly_severity_stacked.png")
+    plt.savefig(fname, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"Saved {fname}")
+
+
+
+def plot_aircraft_category_trends(df, outdir):
+    needed = ["aircraft_category", "decade"]
+    if any(col not in df.columns for col in needed):
+        print("Skipping aircraft category trends (missing columns).")
+        return
+
+    sub = df.dropna(subset=needed)
+    if sub.empty:
+        print("Skipping aircraft category trends (no valid rows).")
+        return
+
+    agg = (
+        sub.groupby(["decade", "aircraft_category"])
+        .size()
+        .reset_index(name="crashes")
+    )
+
+    plt.figure(figsize=(10, 5))
+    sns.lineplot(
+        data=agg,
+        x="decade",
+        y="crashes",
+        hue="aircraft_category",
+        marker="o"
+    )
+    plt.xlabel("Decade")
+    plt.ylabel("Crashes")
+    plt.title("Crashes per decade by aircraft category")
+    plt.tight_layout()
+
+    fname = os.path.join(outdir, "aircraft_category_trends.png")
+    plt.savefig(fname, dpi=300, bbox_inches="tight")
+    plt.close()
+    print("Saved", fname)
+
+
+
+def plot_weather_condition_counts(df, outdir):
+    if "weather_condition" not in df.columns:
+        print("Skipping weather condition count plot (missing column).")
+        return
+
+    sub = df["weather_condition"].dropna()
+    if sub.empty:
+        print("Skipping weather condition counts (no valid rows).")
+        return
+
+    plt.figure(figsize=(9, 5))
+    sns.countplot(
+        y="weather_condition",
+        data=df,
+        order=sub.value_counts().index
+    )
+    plt.xlabel("Number of crashes")
+    plt.ylabel("Weather condition")
+    plt.title("Crash count by weather condition")
+    plt.tight_layout()
+
+    fname = os.path.join(outdir, "weather_condition_counts.png")
+    plt.savefig(fname, dpi=300, bbox_inches="tight")
+    plt.close()
+    print("Saved", fname)
+
+
+
+def plot_aircraft_decade_proportion(df, outdir):
+    """
+    For each decade, show what fraction of crashes are in each aircraft category.
+    This complements the 'crashes per decade' plot by focusing on proportions.
+    """
+    needed = ["aircraft_category", "decade"]
+    if any(col not in df.columns for col in needed):
+        print("Skipping proportion plot (missing columns).")
+        return
+
+    sub = df.dropna(subset=needed)
+    if sub.empty:
+        print("Skipping proportion plot (no valid rows).")
+        return
+
+    # Count crashes per (decade, category), then normalize within each decade
+    counts = (
+        sub.groupby(["decade", "aircraft_category"])
+        .size()
+        .reset_index(name="crashes")
+    )
+    totals = counts.groupby("decade")["crashes"].transform("sum")
+    counts["proportion"] = counts["crashes"] / totals
+
+    plt.figure(figsize=(12, 6))
+    sns.lineplot(
+        data=counts,
+        x="decade",
+        y="proportion",
+        hue="aircraft_category",
+        marker="o"
+    )
+    plt.xlabel("Decade")
+    plt.ylabel("Proportion of crashes")
+    plt.title("Proportion of crashes by aircraft category over time")
+    plt.tight_layout()
+
+    fname = os.path.join(outdir, "aircraft_decade_proportion.png")
+    plt.savefig(fname, dpi=300, bbox_inches="tight")
+    plt.close()
+    print("Saved", fname)
+
+
+def plot_aircraft_median_fatalities(df, outdir):
+    """
+    For each aircraft category, show the median number of fatalities
+    in crashes (including zeros). This is a severity measure.
+    """
+    needed = ["aircraft_category", "fatalities_total"]
+    if any(col not in df.columns for col in needed):
+        print("Skipping median fatalities plot (missing columns).")
+        return
+
+    sub = df.dropna(subset=needed)
+    if sub.empty:
+        print("Skipping median fatalities plot (no valid rows).")
+        return
+
+    agg = (
+        sub.groupby("aircraft_category")["fatalities_total"]
+        .median()
+        .sort_values(ascending=False)
+        .reset_index()
+    )
+
+    plt.figure(figsize=(8, 5))
+    sns.barplot(
+        data=agg,
+        x="fatalities_total",
+        y="aircraft_category",
+        palette="magma"
+    )
+    plt.xlabel("Median fatalities per crash")
+    plt.ylabel("Aircraft category")
+    plt.title("Median fatalities per crash by aircraft category")
+    plt.tight_layout()
+
+    fname = os.path.join(outdir, "aircraft_median_fatalities.png")
+    plt.savefig(fname, dpi=300, bbox_inches="tight")
+    plt.close()
+    print("Saved", fname)
+
 
 def main():
     outdir = ensure_output_dir()
@@ -342,6 +582,16 @@ def main():
     plot_fatality_ratio_by_decade(df, outdir)
     plot_hour_hist(df, outdir)
     plot_fatalities_by_group_decade(df, outdir)
+
+    # Hour-of-day deep dive
+    plot_hourly_severity(df, outdir)
+    plot_hourly_severity_stacked(df, outdir)
+    # Aircraft/Weather visualizations
+    plot_aircraft_category_trends(df, outdir)
+    plot_weather_condition_counts(df, outdir)
+    
+    plot_aircraft_decade_proportion(df, outdir)
+    plot_aircraft_median_fatalities(df, outdir)
 
     print("Done.")
 
