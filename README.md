@@ -59,7 +59,7 @@ ECE-143/
 
 ---
 
-## 📦 Third-Party Modules
+## Third-Party Modules
 
 This project uses the following third-party Python packages:
 
