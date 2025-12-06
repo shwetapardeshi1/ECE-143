@@ -30,16 +30,6 @@ ECE-143/
 ├── README.md                     # This file
 ├── planecrashinfo_accidents.csv  # Raw scraped data
 ├── planecrashinfo_clean.csv      # Cleaned dataset
-├── plots/                        # Generated visualization images (26 plots)
-│   ├── yearly_crashes_fatalities.png
-│   ├── top_countries_accidents.png
-│   ├── survival_rate_by_decade.png
-│   ├── cumulative_fatalities.png
-│   ├── ... (and more)
-└── maps/                         # Interactive HTML maps
-    ├── accidents_by_country.html
-    ├── accidents_by_country_decade.html
-    └── fatality_ratio_by_country.html
 ```
 
 ### Python Modules (.py files)
@@ -73,30 +63,6 @@ This project uses the following third-party Python packages:
 | `requests` | >=2.28.0 | HTTP requests for web scraping |
 | `beautifulsoup4` | >=4.11.0 | HTML parsing for web scraping |
 | `lxml` | >=4.9.0 | XML/HTML parser |
-
-
-## Visualizations
-
-### Static Plots (25+ visualizations)
-
-| Category | Plots |
-|----------|-------|
-| **Temporal Analysis** | Yearly crashes & fatalities, Survival rate by decade, Cumulative fatalities, Top deadly years, Monthly patterns |
-| **Geographic Analysis** | Top countries by accidents |
-| **Operator Analysis** | Top operators, Operator safety comparison |
-| **Aircraft Analysis** | Category trends, Decade proportions, Fatality ratios by type, Category-decade heatmap |
-| **Severity Analysis** | Fatality ratio distributions, Aboard vs fatalities scatter, Crew vs passenger fatalities |
-| **Time-of-Day Analysis** | Hourly accident histogram, Hourly severity, Stacked severity by hour |
-| **Weather & Phase** | Weather condition counts, Weather vs fatality ratio, Flight phase analysis, Phase-fatality heatmap |
-| **Ground Impact** | Ground fatalities analysis |
-
-### Interactive Maps
-
-1. **accidents_by_country.html** - Choropleth of total accidents per country
-2. **accidents_by_country_decade.html** - Animated choropleth showing accidents over time
-3. **fatality_ratio_by_country.html** - Country-level severity visualization
-
----
 
 ## Dataset Schema
 
