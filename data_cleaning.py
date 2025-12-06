@@ -153,14 +153,10 @@ KNOWN_COUNTRIES = {
 
 
 def read_raw_data(path: str) -> pd.DataFrame:
-    """
-    Read the CSV produced by the scraper.
-    That file is a standard comma-separated CSV with a header row.
-    """
     df = pd.read_csv(
         path,
         dtype=str,
-        on_bad_lines="skip",  # if any weird rows, just skip
+        on_bad_lines="skip",
     )
     print("Read data with shape:", df.shape)
     print("Original columns:", list(df.columns))
@@ -168,11 +164,6 @@ def read_raw_data(path: str) -> pd.DataFrame:
 
 
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Standardize column names to snake_case and map known ones
-    to a consistent schema.
-    """
-    # Strip whitespace first
     df = df.rename(columns={c: str(c).strip() for c in df.columns})
 
     col_map = {}
@@ -210,7 +201,6 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
         elif "year_page_url" in col_clean:
             col_map[col] = "year_page_url"
         else:
-            # fallback: generic snake_case
             tmp = re.sub(r"[^0-9a-zA-Z]+", "_", col_clean).strip("_")
             col_map[col] = tmp or col_clean
 
@@ -220,29 +210,19 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def parse_fatalities(text: str):
-    """
-    Examples:
-        "22   (passengers:?  crew:?)"
-        "1    (passengers:1  crew:0)"
-        "20   (passengers:?  crew:?)"
-    Returns: total, pax, crew  (ints or None)
-    """
     if pd.isna(text):
         return None, None, None
 
     s = str(text)
 
-    # Extract leading integer (total fatalities)
     m_total = re.search(r"(\d+)", s)
     total = int(m_total.group(1)) if m_total else None
 
-    # passengers
     m_pax = re.search(r"passengers:\s*([0-9?]+)", s, re.IGNORECASE)
     pax = None
     if m_pax and m_pax.group(1) != "?":
         pax = int(m_pax.group(1))
 
-    # crew
     m_crew = re.search(r"crew:\s*([0-9?]+)", s, re.IGNORECASE)
     crew = None
     if m_crew and m_crew.group(1) != "?":
@@ -252,13 +232,6 @@ def parse_fatalities(text: str):
 
 
 def split_location(loc: str):
-    """
-    Heuristic split of location → (city, state, country).
-
-    Returns
-    -------
-    (city_region, state_region, country)
-    """
     if pd.isna(loc):
         return None, None, None
 
@@ -266,13 +239,10 @@ def split_location(loc: str):
     if not s:
         return None, None, None
 
-    # If there is no comma at all, treat as region or country
     if "," not in s:
-        # Standalone country name or contains one of our known country tokens
         if s in KNOWN_COUNTRIES or any(ctry in s for ctry in KNOWN_COUNTRIES):
             return None, None, s
         else:
-            # e.g. "Atlantic Ocean", "Near Tokyo"
             return s, None, None
 
     parts = [p.strip() for p in s.split(",") if p.strip()]
@@ -282,19 +252,15 @@ def split_location(loc: str):
         city_region = parts[0]
         last = parts[1]
 
-        # Normalize obvious country names
         if last in KNOWN_COUNTRIES:
             return city_region, None, last
 
-        # If the second part is a US state or abbreviation, infer United States
         if last in US_STATES or last in US_ABBREVS:
             return city_region, last, "United States"
 
-        # Sometimes the second part might contain a country token, keep it as country
         if any(ctry in last for ctry in KNOWN_COUNTRIES):
             return city_region, None, last
 
-        # Fallback: treat it as region/state with unknown country
         return city_region, last, None
     else:
         city_region = parts[0]
@@ -310,10 +276,6 @@ def parse_date_col(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def parse_time_col(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Times look like "1718", "2345", "700", "?" etc.
-    Convert to "HH:MM" where possible; keep original as 'time_raw'.
-    """
     if "time" not in df.columns:
         return df
 
@@ -326,12 +288,10 @@ def parse_time_col(df: pd.DataFrame) -> pd.DataFrame:
         if s == "?" or s == "":
             return None
 
-        # Remove non-digits
         s = re.sub(r"\D", "", s)
         if not s:
             return None
 
-        # pad to 4 digits if needed (e.g. "700" → "0700")
         if len(s) <= 2:
             return None
         if len(s) == 3:
@@ -352,13 +312,10 @@ def parse_time_col(df: pd.DataFrame) -> pd.DataFrame:
 def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
     df = normalize_columns(df)
 
-    # Parse dates
     df = parse_date_col(df)
 
-    # Parse time
     df = parse_time_col(df)
 
-    # Fatalities split
     if "fatalities" in df.columns:
         totals = df["fatalities"].apply(lambda x: parse_fatalities(x))
         df["fatalities_total"] = totals.apply(lambda x: x[0])
@@ -371,19 +328,17 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
         )
         df["fatalities_crew"] = pd.to_numeric(df["fatalities_crew"], errors="coerce")
 
-    # Location split
     if "location" in df.columns:
         loc_split = df["location"].apply(lambda x: split_location(x))
         df["location_city"] = loc_split.apply(lambda x: x[0])
         df["location_state"] = loc_split.apply(lambda x: x[1])
         df["location_country"] = loc_split.apply(lambda x: x[2])
 
-    # Ground fatalities numeric
     if "ground_fatalities" in df.columns:
         df["ground_fatalities"] = pd.to_numeric(
             df["ground_fatalities"], errors="coerce"
         )
-    # Aaircraft category from 'aircraft_type'
+
     if "aircraft_type" in df.columns:
         atype = df["aircraft_type"].astype(str)
 
@@ -392,35 +347,28 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
                 return "Unknown"
             s = s.lower()
 
-            # 1) Helicopters / rotorcraft
             if any(k in s for k in [
                 "helicopter", " heli ", "bell ", "uh-", "ch-", "mh-", "ah-",
                 "s-61", "s-76", "mi-8", "mi-17", "mi-24"
             ]):
                 return "Helicopter"
 
-            # 2) Gliders / sailplanes
             if "glider" in s or "sailplane" in s:
                 return "Glider"
 
-            # 3) Amphibian / seaplane / flying boat
             if any(k in s for k in [
                 "amphibian", "seaplane", "floatplane", "flying boat",
                 "catalina", "pby", "goose", "otter", "beaver", "sunderland"
             ]):
                 return "Amphibian/Seaplane"
 
-            # 4) Military fixed-wing (transports, bombers, fighters)
             if any(k in s for k in [
-                # generic military prefixes
                 " c-1", " c-2", " c-3", " c-4", "kc-", "ec-", "rc-",
                 " f-", " b-17", " b-24", " b-29", " b-52",
-                # Soviet / Russian
                 "mig", "mig-", "su-", "tu-", "an-12", "an-22", "il-76",
             ]):
                 return "Military"
 
-            # 5) Large commercial / regional jets
             if any(k in s for k in [
                 "boeing", "airbus", "embraer", "erj", "e-jet",
                 "bombardier", "crj", "md-", "dc-9", "dc-10", "l-1011",
@@ -428,7 +376,6 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
             ]):
                 return "Jet"
 
-            # 6) Turboprops (commuter / regional / utility)
             if any(k in s for k in [
                 "turboprop", " turbo prop", "dhc-", "dash 8", "atr-",
                 "saab 340", "saab 2000", "fokker 27", "fokker 50", "hs-748",
@@ -437,7 +384,6 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
             ]):
                 return "Turboprop"
 
-            # 7) Small / piston props (GA, classic propliners)
             if any(k in s for k in [
                 "cessna", "piper", "beech", "king air", "baron",
                 "bonanza", "mooney", "seneca", "aztec", "navajo",
@@ -447,21 +393,18 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
             ]):
                 return "Piston/Prop"
 
-            # 8) Vintage / early aviation types
             if any(k in s for k in [
                 "trimotor", "tri-motor", "waco", "curtiss", "junker", "junkers",
                 "tiger moth", "biplane", "stearman"
             ]):
                 return "Vintage/Early"
 
-            # 9) Fallback
             return "Other/Unmapped"
 
         df["aircraft_category"] = atype.apply(categorize_aircraft)
     else:
         df["aircraft_category"] = pd.NA
 
-    # Phase of flight from 'summary'
     if "summary" in df.columns:
         summ = df["summary"].astype(str).str.lower()
 
@@ -489,72 +432,59 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
         df["phase_clean"] = summ.apply(extract_phase)
     else:
         df["phase_clean"] = pd.NA
-        
 
-        # Weather conditions inferred from 'summary'
     if "summary" in df.columns:
         summ = df["summary"].astype(str).str.lower()
 
         def extract_weather(s: str) -> str:
-            # quick sanity
             if not s or s.strip() == "" or s.strip() == "?":
                 return "None/Not mentioned"
 
-            # STORM / THUNDERSTORM / MICROBURST
             if any(x in s for x in [
                 "thunderstorm", "thunder storm", "t-storm", "tstorm",
                 "storm", "squall", "microburst", "downburst", "heavy storm"
             ]):
                 return "Storm/Thunderstorm"
 
-            # FOG / LOW VISIBILITY
             if any(x in s for x in [
                 "fog", "mist", "low visibility", "reduced visibility",
                 "poor visibility", "haze", "smog", "whiteout"
             ]):
                 return "Fog/Low visibility"
 
-            # SNOW / ICE / WINTER PRECIP
             if any(x in s for x in [
                 "snow", "blizzard", "sleet", "snowstorm", "snow storm",
                 "icy runway", "ice on runway", "runway ice"
             ]):
                 return "Snow/Icy surface"
 
-            # ICING (in flight)
             if any(x in s for x in [
                 "icing", "ice accretion", "wing ice", "airframe ice",
                 "freezing rain", "freezing drizzle"
             ]):
                 return "Icing (in-flight)"
 
-            # RAIN
             if any(x in s for x in [
                 "rain", "heavy rain", "rainstorm", "rain storm", "showers", "downpour"
             ]):
                 return "Rain"
 
-            # WIND / WIND SHEAR / GUST
             if any(x in s for x in [
                 "wind shear", "windshear", "crosswind", "cross wind", "gust",
                 "strong winds", "gusty", "tailwind", "headwind"
             ]):
                 return "Wind/Wind shear"
 
-            # TURBULENCE
             if "turbulence" in s:
                 return "Turbulence"
 
-            # If they explicitly say "good/clear" weather
             if any(x in s for x in ["clear weather", "good weather", "vfr conditions", "clear skies"]):
                 return "Good/Visual conditions"
 
-            # No obvious weather signal
             return "None/Not mentioned"
 
         df["weather_condition"] = summ.apply(extract_weather)
 
-        # Simple binary flag: was any adverse weather mentioned?
         def has_adverse(w: str) -> bool:
             if w in (
                 "Storm/Thunderstorm",
@@ -572,7 +502,6 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df["weather_condition"] = pd.NA
         df["weather_adverse"] = pd.NA
-
 
     return df
 
